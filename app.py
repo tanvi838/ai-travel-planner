@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import requests
 import streamlit as st
 from google import genai
@@ -15,7 +16,7 @@ st.set_page_config(
 
 st.title("🌍 AI Travel Planner + Chatbot")
 st.markdown(
-    "<p style='text-align:center; font-size:20px; color:#6a4356;'>Plan a trip, see live weather, view destination images, and chat with your travel assistant.</p>",
+    "<p style='text-align:center; font-size:20px; color:#cbd5e1;'>Plan a trip, see live weather, view destination images, and chat with your travel assistant.</p>",
     unsafe_allow_html=True
 )
 st.markdown("<br>", unsafe_allow_html=True)
@@ -25,13 +26,24 @@ st.markdown("""
 
 /* Full app background */
 .stApp {
-    background: linear-gradient(135deg, #fff7fb 0%, #ffeef5 45%, #ffe4ef 100%);
-    color: #4b2e3f !important;
+    background: linear-gradient(135deg, #0f172a 0%, #111827 45%, #1e293b 100%);
+    color: #e2e8f0 !important;
 }
 
 /* Force text color */
 html, body, p, span, label, div, li {
-    color: #4b2e3f !important;
+    color: #e2e8f0 !important;
+}
+
+/* Make cursor visible */
+html, body, .stApp, button, input, textarea, select {
+    cursor: auto !important;
+}
+
+.stTextInput input,
+.stNumberInput input,
+.stTextArea textarea {
+    caret-color: #f8fafc !important;
 }
 
 /* Top header bar */
@@ -40,7 +52,7 @@ header {
 }
 
 [data-testid="stHeader"] {
-    background: rgba(255, 247, 251, 0.85) !important;
+    background: rgba(15, 23, 42, 0.85) !important;
 }
 
 /* Main content area */
@@ -52,7 +64,7 @@ header {
 
 /* Main title */
 h1 {
-    color: #7a3d5c !important;
+    color: #f8fafc !important;
     font-size: 3rem !important;
     font-weight: 800 !important;
     text-align: center;
@@ -61,108 +73,108 @@ h1 {
 
 /* Section headings */
 h2, h3, h4 {
-    color: #b85786 !important;
+    color: #cbd5e1 !important;
     font-weight: 700 !important;
 }
 
 /* Paragraph under heading */
 .stMarkdown p {
-    color: #5a3a4a !important;
+    color: #cbd5e1 !important;
 }
 
 /* Sidebar */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #fff4f9 0%, #ffeef5 100%) !important;
-    border-right: 1px solid #f6cddd;
+    background: linear-gradient(180deg, #111827 0%, #0f172a 100%) !important;
+    border-right: 1px solid #334155;
 }
 
 /* Sidebar text */
 [data-testid="stSidebar"] * {
-    color: #6a3f54 !important;
+    color: #e2e8f0 !important;
 }
 
 /* Inputs */
 .stTextInput input,
 .stNumberInput input,
 .stTextArea textarea {
-    background-color: #fffafb !important;
-    color: #4b2e3f !important;
-    border: 1.5px solid #efbfd3 !important;
+    background-color: #1e293b !important;
+    color: #f8fafc !important;
+    border: 1.5px solid #475569 !important;
     border-radius: 14px !important;
 }
 
 /* Number input buttons area */
 .stNumberInput div[data-baseweb="input"] {
-    background-color: #fffafb !important;
+    background-color: #1e293b !important;
     border-radius: 14px !important;
-    border: 1.5px solid #efbfd3 !important;
+    border: 1.5px solid #475569 !important;
 }
 
 /* Selectbox outer box */
 div[data-baseweb="select"] > div {
-    background-color: #fffafb !important;
-    border: 1.5px solid #efbfd3 !important;
+    background-color: #1e293b !important;
+    border: 1.5px solid #475569 !important;
     border-radius: 14px !important;
-    color: #4b2e3f !important;
+    color: #f8fafc !important;
 }
 
 /* Selectbox value text */
 div[data-baseweb="select"] span {
-    color: #4b2e3f !important;
+    color: #f8fafc !important;
 }
 
 /* Dropdown menu */
 ul[role="listbox"] {
-    background-color: #fffafb !important;
-    border: 1px solid #efbfd3 !important;
+    background-color: #1e293b !important;
+    border: 1px solid #475569 !important;
     border-radius: 12px !important;
 }
 
 /* Dropdown options */
 ul[role="listbox"] li {
-    background-color: #fffafb !important;
-    color: #4b2e3f !important;
+    background-color: #1e293b !important;
+    color: #f8fafc !important;
 }
 
 /* Button */
 .stButton > button {
-    background: linear-gradient(135deg, #f8bfd4 0%, #f3a9c6 100%) !important;
-    color: #5a3145 !important;
+    background: linear-gradient(135deg, #334155 0%, #475569 100%) !important;
+    color: #f8fafc !important;
     border: none !important;
     border-radius: 14px !important;
     padding: 0.75rem 1.4rem !important;
     font-size: 1rem !important;
     font-weight: 700 !important;
-    box-shadow: 0 6px 18px rgba(200, 90, 141, 0.15);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
 }
 
 .stButton > button:hover {
-    background: linear-gradient(135deg, #f4abc8 0%, #ec95b9 100%) !important;
+    background: linear-gradient(135deg, #475569 0%, #64748b 100%) !important;
     color: white !important;
 }
 
 /* Metrics */
 div[data-testid="metric-container"] {
-    background: #fffafb !important;
-    border: 1.5px solid #efbfd3 !important;
+    background: #1e293b !important;
+    border: 1.5px solid #475569 !important;
     border-radius: 16px !important;
     padding: 14px !important;
-    box-shadow: 0 4px 14px rgba(200, 90, 141, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
 
 /* Image/place cards */
 .place-card {
-    background: rgba(255, 250, 251, 0.95);
-    border: 1.5px solid #efbfd3;
+    background: rgba(30, 41, 59, 0.96);
+    border: 1.5px solid #475569;
     border-radius: 18px;
     padding: 16px;
     margin-bottom: 18px;
-    box-shadow: 0 8px 20px rgba(200, 90, 141, 0.08);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
 }
 
 /* Small spacing improvement */
 hr {
-    border-color: #efbfd3 !important;
+    border-color: #475569 !important;
 }
 
 /* Hide Streamlit footer/menu clutter a bit */
@@ -173,11 +185,11 @@ footer {visibility: hidden;}
 """, unsafe_allow_html=True)
 
 # -------------------------------
-# API keys
+# API keys from Streamlit secrets
 # -------------------------------
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
-OPENWEATHER_API_KEY = "YOUR_OPENWEATHER_API_KEY"
-PEXELS_API_KEY = "YOUR_PEXELS_API_KEY"
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+OPENWEATHER_API_KEY = st.secrets["OPENWEATHER_API_KEY"]
+PEXELS_API_KEY = st.secrets["PEXELS_API_KEY"]
 
 # -------------------------------
 # Session state
@@ -191,13 +203,30 @@ if "trip_context" not in st.session_state:
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+if "suggested_places" not in st.session_state:
+    st.session_state.suggested_places = []
+
 # -------------------------------
 # Helper functions
 # -------------------------------
+def call_gemini_with_retry(client, prompt):
+    for attempt in range(5):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+            return response.text
+        except Exception as e:
+            if "503" in str(e) or "UNAVAILABLE" in str(e):
+                wait_time = 2 + attempt
+                time.sleep(wait_time)
+            else:
+                return f"Error: {str(e)}"
+
+    return "⚠️ AI servers are busy right now. Please try again in a few seconds."
+
 def get_city_coordinates(city: str, api_key: str):
-    """
-    Uses OpenWeather Geocoding API to get lat/lon from city name.
-    """
     url = "https://api.openweathermap.org/geo/1.0/direct"
     params = {
         "q": city,
@@ -219,11 +248,7 @@ def get_city_coordinates(city: str, api_key: str):
         "lon": data[0].get("lon")
     }
 
-
 def get_current_weather(lat: float, lon: float, api_key: str):
-    """
-    Uses OpenWeather Current Weather API.
-    """
     url = "https://api.openweathermap.org/data/2.5/weather"
     params = {
         "lat": lat,
@@ -256,11 +281,7 @@ def get_current_weather(lat: float, lon: float, api_key: str):
         "icon": icon
     }
 
-
 def get_destination_image(query: str, api_key: str):
-    """
-    Uses Pexels API to get one image for a place/destination.
-    """
     try:
         url = "https://api.pexels.com/v1/search"
         headers = {
@@ -295,12 +316,7 @@ def get_destination_image(query: str, api_key: str):
     except Exception:
         return None
 
-
 def get_suggested_places_with_gemini(destination: str, days: int, travel_style: str):
-    """
-    Uses Gemini to return a simple list of top places to visit.
-    Output format: one place name per line only.
-    """
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     prompt = f"""
@@ -315,15 +331,9 @@ Rules:
 5. Do not add bullets
 """
 
-    response = client.models.generate_content(
-        model="gemini-3-flash-preview",
-        contents=prompt
-    )
-
-    places_text = response.text.strip()
+    places_text = call_gemini_with_retry(client, prompt).strip()
     places = [line.strip().lstrip("-•1234567890. ") for line in places_text.split("\n") if line.strip()]
     return places[:6]
-
 
 def generate_trip_plan_with_gemini(
     destination: str,
@@ -334,12 +344,6 @@ def generate_trip_plan_with_gemini(
     weather: dict,
     extra_notes: str
 ):
-    """
-    Uses Gemini to create the initial trip plan.
-    """
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY is missing.")
-
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     weather_summary = (
@@ -374,21 +378,9 @@ Instructions:
 8. Do not invent flights or hotel bookings.
 """
 
-    response = client.models.generate_content(
-        model="gemini-3-flash-preview",
-        contents=prompt
-    )
-
-    return response.text
-
+    return call_gemini_with_retry(client, prompt)
 
 def ask_trip_chatbot(user_question: str):
-    """
-    Follow-up chatbot using the existing trip context.
-    """
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY is missing.")
-
     if not st.session_state.plan_text:
         return "Please generate a trip plan first."
 
@@ -436,13 +428,7 @@ Latest User Question:
 {user_question}
 """
 
-    response = client.models.generate_content(
-        model="gemini-3-flash-preview",
-        contents=prompt
-    )
-
-    return response.text
-
+    return call_gemini_with_retry(client, prompt)
 
 # -------------------------------
 # Sidebar
@@ -492,12 +478,6 @@ generate_button = st.button("✨ Generate Trip Plan")
 if generate_button:
     if not destination.strip():
         st.error("Please enter a destination.")
-    elif not GEMINI_API_KEY:
-        st.error("Missing GEMINI_API_KEY. Please set it before running the app.")
-    elif not OPENWEATHER_API_KEY:
-        st.error("Missing OPENWEATHER_API_KEY. Please set it before running the app.")
-    elif not PEXELS_API_KEY:
-        st.error("Missing PEXELS_API_KEY. Please set it before running the app.")
     else:
         try:
             with st.spinner("Getting live data and building your trip plan..."):
@@ -533,84 +513,10 @@ if generate_button:
                         "companions": companions,
                         "weather": weather
                     }
+                    st.session_state.suggested_places = suggested_places
                     st.session_state.chat_history = []
 
                     st.success("Trip plan generated successfully!")
-
-                    # Plan section
-                    st.subheader("🗺️ AI Trip Plan")
-                    st.markdown(plan_text)
-
-                    # Suggested places with image, name and info
-                    st.subheader("📸 Itinerary Highlights")
-
-                    if suggested_places:
-                        for place in suggested_places[:5]:
-                            st.markdown('<div class="place-card">', unsafe_allow_html=True)
-
-                            place_image = get_destination_image(place, PEXELS_API_KEY)
-
-                            col1, col2 = st.columns([1.2, 2.8])
-
-                            with col1:
-                                if place_image and place_image.get("image_url"):
-                                    st.image(place_image["image_url"], width=240)
-                                else:
-                                    st.info("No image")
-
-                            with col2:
-                                st.markdown(
-                                    f"""
-                                    <h3 style="
-                                        color:#7a3d5c;
-                                        font-size:28px;
-                                        font-weight:700;
-                                        margin-top:20px;
-                                        margin-bottom:10px;
-                                    ">📍 {place}</h3>
-                                    """,
-                                    unsafe_allow_html=True
-                                )
-
-                                st.markdown(
-                                    f"""
-                                    <p style="
-                                        color:#5a3a4a;
-                                        font-size:17px;
-                                        margin-top:0;
-                                    ">
-                                    A beautiful place to explore during your trip in {destination}.
-                                    </p>
-                                    """,
-                                    unsafe_allow_html=True
-                                )
-
-                                if place_image:
-                                    st.markdown(
-                                        f"""
-                                        <p style="color:#8a5a72; font-size:14px;">
-                                        Image by {place_image.get('photographer', 'Unknown')} on Pexels
-                                        </p>
-                                        """,
-                                        unsafe_allow_html=True
-                                    )
-
-                            st.markdown("</div>", unsafe_allow_html=True)
-                    else:
-                        st.warning("No suggested places found.")
-
-                    # Weather section
-                    st.subheader("🌦️ Live Weather")
-                    weather_col1, weather_col2, weather_col3, weather_col4 = st.columns(4)
-
-                    weather_col1.metric("Temperature", f"{weather['temperature']} °C")
-                    weather_col2.metric("Feels Like", f"{weather['feels_like']} °C")
-                    weather_col3.metric("Humidity", f"{weather['humidity']}%")
-                    weather_col4.metric("Wind", f"{weather['wind_speed']} m/s")
-
-                    st.write(
-                        f"**Condition:** {weather['weather_main']} ({weather['weather_desc']})"
-                    )
 
         except requests.exceptions.RequestException as e:
             st.error(f"Network/API error: {e}")
@@ -618,18 +524,94 @@ if generate_button:
             st.error(f"Something went wrong: {e}")
 
 # -------------------------------
-# Show old plan if available
+# Persistent plan display
 # -------------------------------
 if st.session_state.plan_text:
+    destination_name = st.session_state.trip_context.get("destination", "")
+    weather = st.session_state.trip_context.get("weather", {})
+    suggested_places = st.session_state.suggested_places
+
+    st.subheader("🗺️ AI Trip Plan")
+    st.markdown(st.session_state.plan_text)
+
+    st.subheader("📸 Itinerary Highlights")
+
+    if suggested_places:
+        for place in suggested_places[:5]:
+            st.markdown('<div class="place-card">', unsafe_allow_html=True)
+
+            place_image = get_destination_image(place, PEXELS_API_KEY)
+
+            col1, col2 = st.columns([1.2, 2.8])
+
+            with col1:
+                if place_image and place_image.get("image_url"):
+                    st.image(place_image["image_url"], width=240)
+                else:
+                    st.info("No image")
+
+            with col2:
+                st.markdown(
+                    f"""
+                    <h3 style="
+                        color:#f8fafc;
+                        font-size:28px;
+                        font-weight:700;
+                        margin-top:20px;
+                        margin-bottom:10px;
+                    ">📍 {place}</h3>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                st.markdown(
+                    f"""
+                    <p style="
+                        color:#cbd5e1;
+                        font-size:17px;
+                        margin-top:0;
+                    ">
+                    A beautiful place to explore during your trip in {destination_name}.
+                    </p>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                if place_image:
+                    st.markdown(
+                        f"""
+                        <p style="color:#94a3b8; font-size:14px;">
+                        Image by {place_image.get('photographer', 'Unknown')} on Pexels
+                        </p>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+            st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.warning("No suggested places found.")
+
+    st.subheader("🌦️ Live Weather")
+    weather_col1, weather_col2, weather_col3, weather_col4 = st.columns(4)
+
+    weather_col1.metric("Temperature", f"{weather.get('temperature', 'N/A')} °C")
+    weather_col2.metric("Feels Like", f"{weather.get('feels_like', 'N/A')} °C")
+    weather_col3.metric("Humidity", f"{weather.get('humidity', 'N/A')}%")
+    weather_col4.metric("Wind", f"{weather.get('wind_speed', 'N/A')} m/s")
+
+    st.write(
+        f"**Condition:** {weather.get('weather_main', 'N/A')} ({weather.get('weather_desc', 'N/A')})"
+    )
+
     st.markdown("---")
     st.subheader("💬 Travel Chatbot")
 
-    user_question = st.text_input(
-        "Ask a follow-up question",
-        placeholder="What should I pack for this trip?"
-    )
-
-    ask_button = st.button("Ask Chatbot")
+    with st.form("chat_form", clear_on_submit=True):
+        user_question = st.text_input(
+            "Ask a follow-up question",
+            placeholder="What should I pack for this trip?"
+        )
+        ask_button = st.form_submit_button("Ask Chatbot")
 
     if ask_button:
         if not user_question.strip():
