@@ -601,72 +601,70 @@ def ask_trip_chatbot(user_question: str):
     if not st.session_state.plan_text:
         return "Please generate a trip plan first."
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-
     destination = st.session_state.trip_context.get("destination", "")
     days = st.session_state.trip_context.get("days", "")
     budget = st.session_state.trip_context.get("budget", "")
     travel_style = st.session_state.trip_context.get("travel_style", "")
     companions = st.session_state.trip_context.get("companions", "")
     weather = st.session_state.trip_context.get("weather", {})
+    suggested_places = st.session_state.suggested_places
 
-    history_text = ""
-    if st.session_state.chat_history:
-        for item in st.session_state.chat_history:
-            history_text += f"User: {item['user']}\nAssistant: {item['assistant']}\n"
+    q = user_question.strip().lower()
+    weather_desc = weather.get("weather_desc", "not available")
+    temperature = weather.get("temperature", "N/A")
+    humidity = weather.get("humidity", "N/A")
+    wind_speed = weather.get("wind_speed", "N/A")
 
-    weather_summary = (
-        f"Temperature: {weather.get('temperature')}°C, "
-        f"Condition: {weather.get('weather_desc')}, "
-        f"Humidity: {weather.get('humidity')}%, "
-        f"Wind speed: {weather.get('wind_speed')} m/s"
+    if not q:
+        return "Please ask a question."
+
+    if "pack" in q or "packing" in q or "what should i carry" in q:
+        return (
+            f"For your {days}-day trip to {destination}, pack comfortable clothes, walking shoes, charger, "
+            f"power bank, ID, basic medicines, and weather-appropriate items. Current weather is {temperature}°C with {weather_desc}, "
+            f"so pack accordingly."
+        )
+
+    if "weather" in q or "temperature" in q or "rain" in q or "climate" in q:
+        return (
+            f"Current weather in {destination} is {temperature}°C with {weather_desc}. "
+            f"Humidity is {humidity}% and wind speed is {wind_speed} m/s."
+        )
+
+    if "budget" in q or "cost" in q or "cheap" in q or "expensive" in q:
+        return (
+            f"Your selected budget is {budget if str(budget).strip() else 'not specified'}. "
+            f"A practical split is: stay 35%, food 20%, local travel 20%, activities 15%, and 10% as buffer."
+        )
+
+    if "place" in q or "visit" in q or "where should i go" in q or "top attraction" in q:
+        if suggested_places:
+            return f"Top places you can prioritize in {destination}: " + ", ".join(suggested_places[:5]) + "."
+        return f"You can explore popular attractions, local markets, scenic viewpoints, and food streets in {destination}."
+
+    if "food" in q or "eat" in q or "restaurant" in q:
+        return (
+            f"For your trip to {destination}, try local food at hygienic and well-reviewed places. "
+            f"Prefer popular local dishes and avoid risky food if you are travelling a lot during the day."
+        )
+
+    if "plan" in q or "itinerary" in q or "schedule" in q:
+        return (
+            "Your trip itinerary is already shown above in the AI Trip Plan section. "
+            "You can follow the day-wise schedule there and adjust activities based on weather and energy level."
+        )
+
+    if "who am i travelling with" in q or "companions" in q:
+        return f"You selected: {companions}."
+
+    if "travel style" in q:
+        return f"Your selected travel style is {travel_style}."
+
+    return (
+        f"This assistant is answering locally to save free-tier quota. "
+        f"Your current trip is {days} days in {destination} with a {travel_style} style, travelling with {companions}. "
+        f"You can ask about weather, packing, budget, places, food, or itinerary."
     )
-
-    prompt = f"""
-You are a travel chatbot helping a user with the same trip.
-
-Trip details:
-Destination: {destination}
-Days: {days}
-Budget: {budget}
-Travel Style: {travel_style}
-Companions: {companions}
-Weather: {weather_summary}
-
-Original Trip Plan:
-{st.session_state.plan_text}
-
-Previous Chat History:
-{history_text}
-
-Answer the user's latest question in a helpful, short, practical way.
-
-Latest User Question:
-{user_question}
-"""
-
-    cache_key = safe_cache_key(
-        "chat",
-        destination,
-        days,
-        budget,
-        travel_style,
-        companions,
-        weather_summary,
-        st.session_state.plan_text[:500],
-        history_text[-500:],
-        user_question
-    )
-
-    result = call_gemini_with_retry(client, prompt, cache_key=cache_key)
-
-    if isinstance(result, dict):
-        return fallback_chat_answer(user_question)
-
-    if not result:
-        return fallback_chat_answer(user_question)
-
-    return result
 
 # -------------------------------
 # Sidebar
