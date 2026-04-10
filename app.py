@@ -333,15 +333,20 @@ def fallback_chat_answer(user_question: str):
 
     if "pack" in q:
         return "Pack comfortable clothes, walking shoes, charger, power bank, ID, basic medicines, and weather-appropriate items."
+    
     if "budget" in q or "cost" in q or "cheap" in q:
         return "Keep your budget split between stay, food, transport, activities, and a small emergency buffer. Book early for better prices."
+    
     if "weather" in q:
         return "Please check the live weather card shown in the app and plan clothes, footwear, and sightseeing timing accordingly."
+    
     if "food" in q or "eat" in q:
         return "Try popular local dishes, but prefer hygienic and well-reviewed places, especially during travel."
+    
     if "places" in q or "visit" in q:
         return "You can use the itinerary highlights section for suggested places and prioritize the ones closest to your stay."
-    return "The travel assistant is temporarily in fallback mode because the AI quota is exhausted. You can still use the itinerary, weather details, and suggested places shown in the app."
+
+    return "I can help with your trip using the itinerary, weather details, and suggested places already shown above. Ask about packing, budget, places to visit, food, or weather."
 
 def call_gemini_with_retry(client, prompt, cache_key=None, max_retries=4):
     if cache_key and cache_key in st.session_state.gemini_cache:
