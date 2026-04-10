@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import random
 import requests
 import streamlit as st
 from google import genai
@@ -206,25 +207,186 @@ if "chat_history" not in st.session_state:
 if "suggested_places" not in st.session_state:
     st.session_state.suggested_places = []
 
+if "plan_source" not in st.session_state:
+    st.session_state.plan_source = ""
+
+if "gemini_cache" not in st.session_state:
+    st.session_state.gemini_cache = {}
+
 # -------------------------------
 # Helper functions
 # -------------------------------
-def call_gemini_with_retry(client, prompt):
-    for attempt in range(5):
+def is_quota_error(error_text: str) -> bool:
+    text = error_text.upper()
+    return (
+        "429" in text or
+        "RESOURCE_EXHAUSTED" in text or
+        "QUOTA" in text or
+        "RATE LIMIT" in text
+    )
+
+def safe_cache_key(prefix: str, *parts) -> str:
+    return prefix + "::" + "::".join([str(p).strip().lower() for p in parts])
+
+def fallback_trip_plan(
+    destination: str,
+    days: int,
+    budget: str,
+    travel_style: str,
+    companions: str,
+    weather: dict,
+    extra_notes: str
+) -> str:
+    weather_line = (
+        f"{weather.get('temperature', 'N/A')}°C, "
+        f"{weather.get('weather_desc', 'weather details unavailable')}"
+    )
+
+    notes_line = extra_notes.strip() if extra_notes.strip() else "No extra preferences provided."
+
+    itinerary_days = []
+    for day in range(1, int(days) + 1):
+        if day == 1:
+            itinerary_days.append(
+                f"**Day {day}: Arrival and local exploration**\n"
+                f"- Reach {destination} and check in\n"
+                f"- Explore nearby markets or a popular local area\n"
+                f"- Keep the evening relaxed and adjust to the local weather"
+            )
+        elif day == int(days):
+            itinerary_days.append(
+                f"**Day {day}: Final sightseeing and departure**\n"
+                f"- Visit one last nearby attraction\n"
+                f"- Try local food or buy souvenirs\n"
+                f"- Leave enough buffer time for checkout and return travel"
+            )
+        else:
+            itinerary_days.append(
+                f"**Day {day}: Main sightseeing day**\n"
+                f"- Visit 2 to 3 major attractions\n"
+                f"- Keep time for food, photos, and rest\n"
+                f"- Plan indoor or outdoor stops depending on the weather"
+            )
+
+    return f"""
+### Trip Overview
+Here is a practical fallback itinerary for **{destination}** because the live AI quota is currently exhausted.
+
+**Trip Duration:** {days} days  
+**Budget:** {budget if str(budget).strip() else 'Not specified'}  
+**Travel Style:** {travel_style}  
+**Companions:** {companions}  
+**Current Weather:** {weather_line}  
+**Notes:** {notes_line}
+
+### Day-wise Itinerary
+{chr(10).join(itinerary_days)}
+
+### Suggested Budget Split
+- **Stay:** 35%
+- **Food:** 20%
+- **Local Travel:** 20%
+- **Activities:** 15%
+- **Buffer:** 10%
+
+### What to Pack
+- Comfortable clothes
+- Walking shoes
+- Phone charger and power bank
+- Basic medicines
+- Water bottle
+- Weather-appropriate jacket or accessories
+
+### Travel Tips
+- Check local opening hours before visiting attractions
+- Keep some extra time for traffic and queues
+- Prefer local food at well-reviewed places
+- Carry cash and digital payment options both
+
+⚠️ The AI planner is temporarily unavailable because the Gemini quota has been reached. The app is using a fallback plan instead.
+""".strip()
+
+def fallback_places(destination: str, days: int):
+    common_map = {
+        "ladakh": ["Leh Palace", "Pangong Lake", "Nubra Valley", "Magnetic Hill", "Shanti Stupa", "Thiksey Monastery"],
+        "goa": ["Baga Beach", "Calangute Beach", "Fort Aguada", "Dudhsagar Falls", "Anjuna Beach", "Basilica of Bom Jesus"],
+        "manali": ["Solang Valley", "Hadimba Temple", "Old Manali", "Rohtang Pass", "Mall Road", "Vashisht Temple"],
+        "jaipur": ["Hawa Mahal", "Amber Fort", "City Palace", "Jal Mahal", "Nahargarh Fort", "Jantar Mantar"],
+        "shimla": ["Mall Road", "Kufri", "Jakhoo Temple", "The Ridge", "Christ Church", "Green Valley"]
+    }
+
+    key = destination.strip().lower()
+    if key in common_map:
+        return common_map[key][:min(days * 2, 6)]
+
+    return [
+        f"{destination} Main Market",
+        f"{destination} City Center",
+        f"{destination} Popular Viewpoint",
+        f"{destination} Cultural Spot",
+        f"{destination} Local Food Street",
+        f"{destination} Nearby Scenic Place"
+    ][:min(days * 2, 6)]
+
+def fallback_chat_answer(user_question: str):
+    q = user_question.strip().lower()
+
+    if "pack" in q:
+        return "Pack comfortable clothes, walking shoes, charger, power bank, ID, basic medicines, and weather-appropriate items."
+    if "budget" in q or "cost" in q or "cheap" in q:
+        return "Keep your budget split between stay, food, transport, activities, and a small emergency buffer. Book early for better prices."
+    if "weather" in q:
+        return "Please check the live weather card shown in the app and plan clothes, footwear, and sightseeing timing accordingly."
+    if "food" in q or "eat" in q:
+        return "Try popular local dishes, but prefer hygienic and well-reviewed places, especially during travel."
+    if "places" in q or "visit" in q:
+        return "You can use the itinerary highlights section for suggested places and prioritize the ones closest to your stay."
+    return "The travel assistant is temporarily in fallback mode because the AI quota is exhausted. You can still use the itinerary, weather details, and suggested places shown in the app."
+
+def call_gemini_with_retry(client, prompt, cache_key=None, max_retries=4):
+    if cache_key and cache_key in st.session_state.gemini_cache:
+        return st.session_state.gemini_cache[cache_key]
+
+    for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt
             )
-            return response.text
-        except Exception as e:
-            if "503" in str(e) or "UNAVAILABLE" in str(e):
-                wait_time = 2 + attempt
-                time.sleep(wait_time)
-            else:
-                return f"Error: {str(e)}"
 
-    return "⚠️ AI servers are busy right now. Please try again in a few seconds."
+            text = getattr(response, "text", None)
+            if text and text.strip():
+                final_text = text.strip()
+                if cache_key:
+                    st.session_state.gemini_cache[cache_key] = final_text
+                return final_text
+
+            return None
+
+        except Exception as e:
+            error_text = str(e)
+
+            if is_quota_error(error_text):
+                return {
+                    "type": "quota_error",
+                    "message": "Gemini quota exhausted"
+                }
+
+            transient_signals = ["503", "UNAVAILABLE", "500", "DEADLINE_EXCEEDED", "INTERNAL"]
+            if any(signal in error_text.upper() for signal in transient_signals) and attempt < max_retries - 1:
+                sleep_time = (2 ** attempt) + random.uniform(0.5, 1.5)
+                time.sleep(sleep_time)
+                continue
+
+            return {
+                "type": "other_error",
+                "message": error_text
+            }
+
+    return {
+        "type": "other_error",
+        "message": "AI servers are busy right now. Please try again later."
+    }
 
 def get_city_coordinates(city: str, api_key: str):
     url = "https://api.openweathermap.org/geo/1.0/direct"
@@ -331,9 +493,26 @@ Rules:
 5. Do not add bullets
 """
 
-    places_text = call_gemini_with_retry(client, prompt).strip()
-    places = [line.strip().lstrip("-•1234567890. ") for line in places_text.split("\n") if line.strip()]
-    return places[:6]
+    cache_key = safe_cache_key("places", destination, days, travel_style)
+    result = call_gemini_with_retry(client, prompt, cache_key=cache_key)
+
+    if isinstance(result, dict):
+        return fallback_places(destination, days), "fallback"
+
+    if not result:
+        return fallback_places(destination, days), "fallback"
+
+    places = [line.strip().lstrip("-•1234567890. ") for line in result.split("\n") if line.strip()]
+
+    cleaned_places = []
+    for place in places:
+        if place and place not in cleaned_places:
+            cleaned_places.append(place)
+
+    if not cleaned_places:
+        return fallback_places(destination, days), "fallback"
+
+    return cleaned_places[:6], "ai"
 
 def generate_trip_plan_with_gemini(
     destination: str,
@@ -378,7 +557,37 @@ Instructions:
 8. Do not invent flights or hotel bookings.
 """
 
-    return call_gemini_with_retry(client, prompt)
+    cache_key = safe_cache_key(
+        "plan",
+        destination,
+        days,
+        budget,
+        travel_style,
+        companions,
+        weather_summary,
+        extra_notes
+    )
+
+    result = call_gemini_with_retry(client, prompt, cache_key=cache_key)
+
+    if isinstance(result, dict):
+        if result.get("type") == "quota_error":
+            return fallback_trip_plan(
+                destination, days, budget, travel_style, companions, weather, extra_notes
+            ), "fallback_quota"
+
+        return (
+            "⚠️ The AI planner is temporarily unavailable due to a technical issue.\n\n"
+            + fallback_trip_plan(destination, days, budget, travel_style, companions, weather, extra_notes),
+            "fallback_error"
+        )
+
+    if not result:
+        return fallback_trip_plan(
+            destination, days, budget, travel_style, companions, weather, extra_notes
+        ), "fallback_empty"
+
+    return result, "ai"
 
 def ask_trip_chatbot(user_question: str):
     if not st.session_state.plan_text:
@@ -428,7 +637,28 @@ Latest User Question:
 {user_question}
 """
 
-    return call_gemini_with_retry(client, prompt)
+    cache_key = safe_cache_key(
+        "chat",
+        destination,
+        days,
+        budget,
+        travel_style,
+        companions,
+        weather_summary,
+        st.session_state.plan_text[:500],
+        history_text[-500:],
+        user_question
+    )
+
+    result = call_gemini_with_retry(client, prompt, cache_key=cache_key)
+
+    if isinstance(result, dict):
+        return fallback_chat_answer(user_question)
+
+    if not result:
+        return fallback_chat_answer(user_question)
+
+    return result
 
 # -------------------------------
 # Sidebar
@@ -492,7 +722,7 @@ if generate_button:
                         OPENWEATHER_API_KEY
                     )
 
-                    plan_text = generate_trip_plan_with_gemini(
+                    plan_text, plan_source = generate_trip_plan_with_gemini(
                         destination=destination,
                         days=days,
                         budget=budget,
@@ -502,21 +732,28 @@ if generate_button:
                         extra_notes=extra_notes
                     )
 
-                    suggested_places = get_suggested_places_with_gemini(destination, days, travel_style)
+                    suggested_places, places_source = get_suggested_places_with_gemini(
+                        destination, days, travel_style
+                    )
 
                     st.session_state.plan_text = plan_text
+                    st.session_state.plan_source = plan_source
                     st.session_state.trip_context = {
                         "destination": destination,
                         "days": days,
                         "budget": budget,
                         "travel_style": travel_style,
                         "companions": companions,
-                        "weather": weather
+                        "weather": weather,
+                        "places_source": places_source
                     }
                     st.session_state.suggested_places = suggested_places
                     st.session_state.chat_history = []
 
-                    st.success("Trip plan generated successfully!")
+                    if plan_source == "ai":
+                        st.success("Trip plan generated successfully!")
+                    else:
+                        st.warning("Trip plan loaded in fallback mode because AI quota is currently unavailable.")
 
         except requests.exceptions.RequestException as e:
             st.error(f"Network/API error: {e}")
@@ -530,11 +767,19 @@ if st.session_state.plan_text:
     destination_name = st.session_state.trip_context.get("destination", "")
     weather = st.session_state.trip_context.get("weather", {})
     suggested_places = st.session_state.suggested_places
+    places_source = st.session_state.trip_context.get("places_source", "ai")
 
     st.subheader("🗺️ AI Trip Plan")
+
+    if st.session_state.plan_source != "ai":
+        st.info("AI quota reached, so the app is showing a fallback itinerary instead of a live Gemini-generated plan.")
+
     st.markdown(st.session_state.plan_text)
 
     st.subheader("📸 Itinerary Highlights")
+
+    if places_source != "ai":
+        st.caption("Suggested places are currently shown using fallback recommendations.")
 
     if suggested_places:
         for place in suggested_places[:5]:
@@ -548,7 +793,7 @@ if st.session_state.plan_text:
                 if place_image and place_image.get("image_url"):
                     st.image(place_image["image_url"], width=240)
                 else:
-                    st.info("No image")
+                    st.info("No image available")
 
             with col2:
                 st.markdown(
