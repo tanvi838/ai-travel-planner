@@ -478,42 +478,6 @@ def get_destination_image(query: str, api_key: str):
     except Exception:
         return None
 
-def get_suggested_places_with_gemini(destination: str, days: int, travel_style: str):
-    client = genai.Client(api_key=GEMINI_API_KEY)
-
-    prompt = f"""
-Suggest the top {min(days * 3, 6)} tourist places to visit in {destination}
-for a {travel_style} trip.
-
-Rules:
-1. Return only place names
-2. One place per line
-3. Do not add numbering
-4. Do not add explanation
-5. Do not add bullets
-"""
-
-    cache_key = safe_cache_key("places", destination, days, travel_style)
-    result = call_gemini_with_retry(client, prompt, cache_key=cache_key)
-
-    if isinstance(result, dict):
-        return fallback_places(destination, days), "fallback"
-
-    if not result:
-        return fallback_places(destination, days), "fallback"
-
-    places = [line.strip().lstrip("-•1234567890. ") for line in result.split("\n") if line.strip()]
-
-    cleaned_places = []
-    for place in places:
-        if place and place not in cleaned_places:
-            cleaned_places.append(place)
-
-    if not cleaned_places:
-        return fallback_places(destination, days), "fallback"
-
-    return cleaned_places[:6], "ai"
-
 def generate_trip_plan_with_gemini(
     destination: str,
     days: int,
@@ -546,19 +510,33 @@ Companions: {companions}
 Current Weather: {weather_summary}
 Extra Notes: {extra_notes}
 
-Instructions:
-1. Give a short introduction.
-2. Create a day-wise itinerary.
-3. Suggest top places to visit.
-4. Give a rough budget split for stay, food, travel, and activities.
-5. Mention weather-aware travel tips.
-6. Mention what to pack.
-7. Keep the answer clear, simple, and nicely formatted.
-8. Do not invent flights or hotel bookings.
+Return the response in exactly this format:
+
+TRIP_PLAN:
+<write the full trip plan here with:
+1. short introduction
+2. day-wise itinerary
+3. rough budget split
+4. weather-aware travel tips
+5. packing suggestions>
+
+SUGGESTED_PLACES:
+<place 1>
+<place 2>
+<place 3>
+<place 4>
+<place 5>
+<place 6>
+
+Rules:
+- Do not number places
+- One place per line under SUGGESTED_PLACES
+- Keep output clean and structured
+- Do not invent flights or hotel bookings
 """
 
     cache_key = safe_cache_key(
-        "plan",
+        "plan_with_places",
         destination,
         days,
         budget,
@@ -571,23 +549,53 @@ Instructions:
     result = call_gemini_with_retry(client, prompt, cache_key=cache_key)
 
     if isinstance(result, dict):
+        fallback_plan = fallback_trip_plan(
+            destination, days, budget, travel_style, companions, weather, extra_notes
+        )
+        fallback_places_list = fallback_places(destination, days)
+
         if result.get("type") == "quota_error":
-            return fallback_trip_plan(
-                destination, days, budget, travel_style, companions, weather, extra_notes
-            ), "fallback_quota"
+            return fallback_plan, fallback_places_list, "fallback_quota", "fallback"
 
         return (
-            "⚠️ The AI planner is temporarily unavailable due to a technical issue.\n\n"
-            + fallback_trip_plan(destination, days, budget, travel_style, companions, weather, extra_notes),
-            "fallback_error"
+            "⚠️ The AI planner is temporarily unavailable due to a technical issue.\n\n" + fallback_plan,
+            fallback_places_list,
+            "fallback_error",
+            "fallback"
         )
 
     if not result:
-        return fallback_trip_plan(
-            destination, days, budget, travel_style, companions, weather, extra_notes
-        ), "fallback_empty"
+        return (
+            fallback_trip_plan(destination, days, budget, travel_style, companions, weather, extra_notes),
+            fallback_places(destination, days),
+            "fallback_empty",
+            "fallback"
+        )
 
-    return result, "ai"
+    plan_text = result
+    suggested_places = []
+
+    if "TRIP_PLAN:" in result and "SUGGESTED_PLACES:" in result:
+        trip_part, places_part = result.split("SUGGESTED_PLACES:", 1)
+        plan_text = trip_part.replace("TRIP_PLAN:", "", 1).strip()
+        suggested_places = [
+            line.strip().lstrip("-•1234567890. ")
+            for line in places_part.split("\n")
+            if line.strip()
+        ]
+
+    cleaned_places = []
+    for place in suggested_places:
+        if place and place not in cleaned_places:
+            cleaned_places.append(place)
+
+    if not cleaned_places:
+        cleaned_places = fallback_places(destination, days)
+        places_source = "fallback"
+    else:
+        places_source = "ai"
+
+    return plan_text, cleaned_places[:6], "ai", places_source
 
 def ask_trip_chatbot(user_question: str):
     if not st.session_state.plan_text:
@@ -722,7 +730,7 @@ if generate_button:
                         OPENWEATHER_API_KEY
                     )
 
-                    plan_text, plan_source = generate_trip_plan_with_gemini(
+                    plan_text, suggested_places, plan_source, places_source = generate_trip_plan_with_gemini(
                         destination=destination,
                         days=days,
                         budget=budget,
@@ -730,10 +738,6 @@ if generate_button:
                         companions=companions,
                         weather=weather,
                         extra_notes=extra_notes
-                    )
-
-                    suggested_places, places_source = get_suggested_places_with_gemini(
-                        destination, days, travel_style
                     )
 
                     st.session_state.plan_text = plan_text
