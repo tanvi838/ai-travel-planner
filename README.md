@@ -26,5 +26,6 @@ An AI-powered travel planner that generates personalized itineraries, shows live
 GEMINI_API_KEY = "your_key"
 OPENWEATHER_API_KEY = "your_key"
 PEXELS_API_KEY = "your_key"
+
 3.Run the app:
 python -m streamlit run app.py
