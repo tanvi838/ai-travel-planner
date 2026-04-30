@@ -22,3 +22,9 @@ An AI-powered travel planner that generates personalized itineraries, shows live
 1. Install dependencies:
    ```bash
    pip install -r requirements.txt
+2. Add your API keys in .streamlit/secrets.toml:
+GEMINI_API_KEY = "your_key"
+OPENWEATHER_API_KEY = "your_key"
+PEXELS_API_KEY = "your_key"
+3.Run the app:
+python -m streamlit run app.py
