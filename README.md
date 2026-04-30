@@ -1,28 +1,24 @@
-# AI Travel Planner
+# 🌍 AI Travel Planner + Chatbot
 
-An AI-powered travel planner that generates itineraries and answers travel-related queries using a chatbot.
+An AI-powered travel planner that generates personalized itineraries, shows live weather, displays destination images, and includes a chatbot for answering travel-related queries.
 
 ## 🚀 Features
-- Travel itinerary generation  
-- Chatbot support  
-- Weather information  
-- Destination images  
+- AI-based trip itinerary generation (day-wise plan, budget, tips)  
+- Context-aware chatbot for follow-up questions  
+- Live weather data using OpenWeather API  
+- Destination images using Pexels API  
+- Smart fallback system when AI quota is exhausted  
+- Caching and retry logic for handling API failures  
 
 ## 🛠️ Tech Stack
 - Python  
 - Streamlit  
-- Gemini API  
+- Gemini API (Google GenAI)  
 - OpenWeather API  
 - Pexels API  
 
 ## ▶️ How to Run
 
 1. Install dependencies:
+   ```bash
    pip install -r requirements.txt
-
-2. Add your API keys in `app.py`
-
-3. Run the app:
-    If `streamlit` command doesn't work, use:
-
-    python -m streamlit run app.py
